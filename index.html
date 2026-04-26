@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mini Project Manager</title>
+
+<style>
+body {
+    margin: 0;
+    height: 100vh;
+    font-family: Arial;
+    background: radial-gradient(circle at center, #3fd0c9, #0f3d3e 70%);
+}
+
+header {
+    background: #000000;
+    color: white;
+    padding: 10px;
+    text-align: center;
+}
+
+#login, #app {
+    padding: 20px;
+}
+
+input, button {
+    padding: 8px;
+    margin: 5px;
+}
+
+.board {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+}
+
+.column {
+    background: #e2e4e6;
+    padding: 10px;
+    border-radius: 5px;
+    width: 250px;
+    min-height: 200px;
+}
+
+.column.dragover {
+    background: #c8f7f3;
+    border: 2px dashed #000;
+}
+
+.card {
+    background: white;
+    padding: 8px;
+    margin: 8px 0;
+    border-radius: 5px;
+    cursor: grab;
+}
+
+.card:active {
+    cursor: grabbing;
+}
+
+.comment {
+    font-size: 12px;
+    background: #eee;
+    margin: 3px 0;
+    padding: 3px;
+}
+
+.groupBox {
+    background:#00000055;
+    color:white;
+    padding:10px;
+    border-radius:6px;
+    margin-bottom:10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>📌 GROUP PROJECT MANAGER (DRAG & DROP)</header>
+
+<div id="login">
+    <h3>Login</h3>
+    <input id="username" placeholder="Enter username">
+    <button onclick="login()">Login</button>
+</div>
+
+<div id="app" style="display:none;">
+    <h3 id="welcome"></h3>
+
+    <div class="groupBox">
+        <h4>👥 Groups</h4>
+        <input id="groupName" placeholder="New Group Name">
+        <button onclick="createGroup()">Create Group</button>
+
+        <input id="joinCode" placeholder="Enter Group Code">
+        <button onclick="joinGroup()">Join Group</button>
+
+        <div id="groupInfo"></div>
+    </div>
+
+    <input id="projectName" placeholder="New Project">
+    <button onclick="createProject()">Create Project</button>
+
+    <div id="projects"></div>
+</div>
+
+<script>
+let db = JSON.parse(localStorage.getItem("pm_db")) || {
+    users: [],
+    groups: []
+};
+
+let currentUser = null;
+let currentGroup = null;
+
+let dragData = null;
+
+function saveDB() {
+    localStorage.setItem("pm_db", JSON.stringify(db));
+}
+
+// LOGIN
+function login() {
+    const name = document.getElementById("username").value;
+    if (!name) return;
+
+    currentUser = name;
+    if (!db.users.includes(name)) db.users.push(name);
+
+    document.getElementById("login").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    document.getElementById("welcome").innerText = "Welcome " + name;
+
+    saveDB();
+    render();
+}
+
+// GROUP
+function createGroup() {
+    const name = document.getElementById("groupName").value;
+    if (!name) return;
+
+    const code = "GRP" + Math.floor(Math.random() * 99999);
+
+    const group = {
+        name,
+        code,
+        members: [currentUser],
+        projects: []
+    };
+
+    db.groups.push(group);
+    currentGroup = group;
+
+    saveDB();
+    render();
+    alert("Group Code: " + code);
+}
+
+function joinGroup() {
+    const code = document.getElementById("joinCode").value;
+    const group = db.groups.find(g => g.code === code);
+
+    if (!group) return alert("Invalid Code");
+
+    if (!group.members.includes(currentUser)) {
+        group.members.push(currentUser);
+    }
+
+    currentGroup = group;
+    saveDB();
+    render();
+}
+
+// PROJECT
+function createProject() {
+    if (!currentGroup) return alert("Join group first");
+
+    const name = document.getElementById("projectName").value;
+    if (!name) return;
+
+    currentGroup.projects.push({
+        name,
+        columns: [
+            { name: "Todo", cards: [] },
+            { name: "Doing", cards: [] },
+            { name: "Done", cards: [] }
+        ]
+    });
+
+    saveDB();
+    render();
+}
+
+// CARD
+function addCard(pIndex, cIndex) {
+    const text = prompt("Task name:");
+    if (!text) return;
+
+    currentGroup.projects[pIndex].columns[cIndex].cards.push({
+        text,
+        assigned: currentUser,
+        comments: []
+    });
+
+    saveDB();
+    render();
+}
+
+// COMMENT
+function addComment(pIndex, cIndex, cardIndex) {
+    const comment = prompt("Enter comment:");
+    if (!comment) return;
+
+    currentGroup.projects[pIndex].columns[cIndex]
+        .cards[cardIndex].comments.push(currentUser + ": " + comment);
+
+    saveDB();
+    render();
+}
+
+// DRAG START
+function dragStart(e, pIndex, cIndex, cardIndex) {
+    dragData = { pIndex, cIndex, cardIndex };
+}
+
+// DROP
+function dropCard(e, targetColIndex, pIndex) {
+    e.preventDefault();
+
+    if (!dragData) return;
+
+    const card = currentGroup.projects[dragData.pIndex]
+        .columns[dragData.cIndex]
+        .cards.splice(dragData.cardIndex, 1)[0];
+
+    currentGroup.projects[pIndex]
+        .columns[targetColIndex]
+        .cards.push(card);
+
+    dragData = null;
+
+    saveDB();
+    render();
+}
+
+function allowDrop(e) {
+    e.preventDefault();
+}
+
+// RENDER
+function render() {
+    const container = document.getElementById("projects");
+    const info = document.getElementById("groupInfo");
+
+    container.innerHTML = "";
+
+    if (!currentGroup) return;
+
+    info.innerHTML = `
+        <b>${currentGroup.name}</b><br>
+        Code: ${currentGroup.code}<br>
+        Members: ${currentGroup.members.join(", ")}
+    `;
+
+    currentGroup.projects.forEach((project, pIndex) => {
+        const div = document.createElement("div");
+        div.innerHTML = "<h3>" + project.name + "</h3>";
+
+        const board = document.createElement("div");
+        board.className = "board";
+
+        project.columns.forEach((col, cIndex) => {
+            const colDiv = document.createElement("div");
+            colDiv.className = "column";
+
+            colDiv.ondragover = allowDrop;
+            colDiv.ondrop = (e) => dropCard(e, cIndex, pIndex);
+
+            colDiv.innerHTML = "<h4>" + col.name + "</h4>";
+
+            const btn = document.createElement("button");
+            btn.innerText = "+ Add Task";
+            btn.onclick = () => addCard(pIndex, cIndex);
+            colDiv.appendChild(btn);
+
+            col.cards.forEach((card, cardIndex) => {
+                const cardDiv = document.createElement("div");
+                cardDiv.className = "card";
+                cardDiv.draggable = true;
+
+                cardDiv.ondragstart = (e) =>
+                    dragStart(e, pIndex, cIndex, cardIndex);
+
+                cardDiv.innerHTML =
+                    "<b>" + card.text + "</b><br>👤 " + card.assigned;
+
+                cardDiv.onclick = () =>
+                    addComment(pIndex, cIndex, cardIndex);
+
+                card.comments.forEach(c => {
+                    const cm = document.createElement("div");
+                    cm.className = "comment";
+                    cm.innerText = c;
+                    cardDiv.appendChild(cm);
+                });
+
+                colDiv.appendChild(cardDiv);
+            });
+
+            board.appendChild(colDiv);
+        });
+
+        div.appendChild(board);
+        container.appendChild(div);
+    });
+}
+
+// SYNC
+setInterval(() => {
+    db = JSON.parse(localStorage.getItem("pm_db")) || db;
+    render();
+}, 2000);
+</script>
+
+</body>
+</html>
